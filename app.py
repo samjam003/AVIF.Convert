@@ -1,4 +1,3 @@
-
 from flask import (
     Flask,
     render_template,
@@ -8,9 +7,12 @@ from flask import (
     redirect,
     url_for,
     send_from_directory,
+    abort,
 )
 import os
 from PIL import Image
+import io
+
 
 import pillow_avif
 
@@ -27,9 +29,7 @@ app = Flask(__name__)
 
 UPLOAD_FOLDER = "uploads"
 CONVERTED_FOLDER = "static/converted"
-
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg"}
-
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 
@@ -67,8 +67,12 @@ def upload_file():
             print("Converted to AVIF")
 
             NewFileName = os.path.splitext(filename)[0] + ".avif"
+            try:
+                os.remove(input_file_path)
+            except Exception as error:
+                print(f"Error deleting file: {error}")
 
-            return redirect(url_for("download_file", filename=NewFileName))
+            return redirect(url_for("view_image", filename=NewFileName))
 
     return "Invalid file format"
 
@@ -78,27 +82,25 @@ def view_image(filename):
     return render_template("view.html", filename=filename)
 
 
-import io
-
-
-@app.route("/download/<filename>")
+@app.route("/download/<filename>", methods=["GET"])
 def download_file(filename):
-    filepath = os.path.join("static/converted", filename)
-    file_data = None
+    filepath = os.path.join(CONVERTED_FOLDER, filename)
+
+    if not os.path.isfile(filepath):
+        abort(404)  # Return 404 if the file is not found
 
     @after_this_request
     def remove_file(response):
         try:
-            with open(filepath, "rb") as file:
-                file_data = file.read()
             os.remove(filepath)
         except Exception as error:
             print(f"Error deleting file: {error}")
         return response
 
-    return send_file(
-        io.BytesIO(file_data), as_attachment=True, attachment_filename=filename
-    )
+    with open(filepath, "rb") as file:
+        file_data = file.read()
+
+    return send_file(io.BytesIO(file_data), as_attachment=True, download_name=filename)
 
 
 if __name__ == "__main__":
